@@ -1,0 +1,226 @@
+using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
+
+
+
+public enum TileType
+{
+    Empty, Path, TJunction, Cross, RopeSingle, RopeDouble, ZiplineStart, ZiplineEnd
+}
+
+public class Tile2D : MonoBehaviour
+{
+    public TileType tileType;
+
+    public bool north, east, south, west;
+
+    public int capacity = 99;
+    private int occupants = 0;
+
+    public Tile2D ziplineTarget;
+
+    void Awake()
+    {
+        if (tileType == TileType.RopeSingle) capacity = 1;
+        if (tileType == TileType.RopeDouble) capacity = 2;
+    }
+
+    public bool CanEnter() => occupants < capacity;
+    public void Enter() => occupants++;
+    public void Exit() => occupants = Mathf.Max(0, occupants - 1);
+}
+
+// ================= UNIT =================
+public class Unit2D : MonoBehaviour
+{
+    public bool isAgent = true;
+
+    public float moveSpeed = 4f;
+    public float turnSpeed = 10f;
+
+    private bool moving = false;
+    private float lastAngle;
+
+    public void MoveTo(Vector2 target)
+    {
+        if (!moving)
+            StartCoroutine(SmoothMove(target));
+    }
+
+    IEnumerator SmoothMove(Vector2 target)
+    {
+        moving = true;
+
+        Vector2 start = transform.position;
+        float t = 0;
+
+        while (t < 1)
+        {
+            t += Time.deltaTime * moveSpeed;
+
+            Vector2 pos = Vector2.Lerp(start, target, t);
+            transform.position = new Vector3(pos.x, pos.y, 0);
+
+            Vector2 dir = (target - pos).normalized;
+            if (dir.sqrMagnitude > 0.001f)
+            {
+                float angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+                lastAngle = angle;
+                transform.rotation = Quaternion.Lerp(transform.rotation, Quaternion.Euler(0, 0, angle), Time.deltaTime * turnSpeed);
+            }
+
+            yield return null;
+        }
+
+        transform.position = new Vector3(target.x, target.y, 0);
+        moving = false;
+    }
+}
+
+// ================= INPUT SYSTEM =================
+public class InputController2D : MonoBehaviour
+{
+    private Unit2D selectedUnit;
+
+    void Update()
+    {
+        if (Input.GetMouseButtonDown(0))
+        {
+            Vector3 mouse = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            Vector2 world = new Vector2(mouse.x, mouse.y);
+
+            Collider2D col = Physics2D.OverlapPoint(world);
+
+            if (col == null) return;
+
+            // SELECT UNIT
+            Unit2D unit = col.GetComponent<Unit2D>();
+            if (unit != null)
+            {
+                selectedUnit = unit;
+                return;
+            }
+
+            // MOVE SELECTED UNIT
+            Tile2D tile = col.GetComponent<Tile2D>();
+            if (tile != null && selectedUnit != null)
+            {
+                HandleMovement(tile);
+            }
+        }
+    }
+
+    void HandleMovement(Tile2D targetTile)
+    {
+        Tile2D currentTile = GetTileUnder(selectedUnit.transform.position);
+        if (currentTile == null) return;
+
+        Vector2 targetPos = targetTile.transform.position;
+
+        if (selectedUnit.isAgent)
+        {
+            // ONLY MOVE ONE TILE + MUST BE CONNECTED
+            if (IsAdjacent(currentTile, targetTile) && IsConnected(currentTile, targetTile))
+            {
+                selectedUnit.MoveTo(targetPos);
+            }
+        }
+        else
+        {
+            // BUILDER: FREE MOVEMENT
+            selectedUnit.MoveTo(targetPos);
+        }
+    }
+
+    bool IsAdjacent(Tile2D a, Tile2D b)
+    {
+        float dist = Vector2.Distance(a.transform.position, b.transform.position);
+        return dist < 2.1f; // assuming tiles are 2 units apart
+    }
+
+    bool IsConnected(Tile2D a, Tile2D b)
+    {
+        Vector2 dir = ((Vector2)b.transform.position - (Vector2)a.transform.position).normalized;
+
+        if (dir == Vector2.up) return a.north && b.south;
+        if (dir == Vector2.right) return a.east && b.west;
+        if (dir == Vector2.down) return a.south && b.north;
+        if (dir == Vector2.left) return a.west && b.east;
+
+        return false;
+    }
+
+    Tile2D GetTileUnder(Vector2 pos)
+    {
+        Collider2D col = Physics2D.OverlapPoint(pos);
+        if (col == null) return null;
+        return col.GetComponent<Tile2D>();
+    }
+}
+
+// ================= BUILD SYSTEM =================
+public class BuilderSystem2D : MonoBehaviour
+{
+    public GameObject[] tilePrefabs;
+    public Material validMat;
+    public Material invalidMat;
+
+    private GameObject preview;
+    private int selectedIndex = 0;
+    private float rotation = 0;
+
+    void Start()
+    {
+        preview = Instantiate(tilePrefabs[selectedIndex]);
+        preview.GetComponent<Collider2D>().enabled = false;
+    }
+
+    void Update()
+    {
+        UpdatePreview();
+
+        if (Input.GetMouseButtonDown(1))
+        {
+            if (IsValidPosition())
+                PlaceTile();
+        }
+    }
+
+    void UpdatePreview()
+    {
+        Vector3 mouse = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        Vector2 world = new Vector2(mouse.x, mouse.y);
+
+        world.x = Mathf.Floor(world.x / 2) * 2;
+        world.y = Mathf.Floor(world.y / 2) * 2;
+
+        preview.transform.position = new Vector3(world.x, world.y, 0);
+        preview.transform.rotation = Quaternion.Euler(0, 0, rotation);
+
+        bool valid = IsValidPosition();
+        SetPreviewColor(valid);
+    }
+
+    void SetPreviewColor(bool valid)
+    {
+        Material m = valid ? validMat : invalidMat;
+
+        foreach (var r in preview.GetComponentsInChildren<SpriteRenderer>())
+            r.material = m;
+    }
+
+    bool IsValidPosition()
+    {
+        Collider2D col = Physics2D.OverlapBox(preview.transform.position, Vector2.one * 1.8f, 0);
+        return col == null;
+    }
+
+    void PlaceTile()
+    {
+        Instantiate(tilePrefabs[selectedIndex], preview.transform.position, preview.transform.rotation);
+    }
+
+    public void RotateTile() => rotation += 90f;
+    public void SelectTile(int i) => selectedIndex = i;
+}
