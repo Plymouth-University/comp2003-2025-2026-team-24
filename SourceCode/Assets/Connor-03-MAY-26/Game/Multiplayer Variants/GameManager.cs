@@ -1,0 +1,300 @@
+using System.Collections.Generic;
+using UnityEngine;
+using TMPro;
+
+public class GameManager_MP : MonoBehaviour
+{
+    public static GameManager_MP Instance;
+
+    [Header("Grid")]
+    [SerializeField] private int _width = 10;
+    [SerializeField] private int _height = 10;
+    [SerializeField] private Tile _tilePrefab;
+    [SerializeField] private Transform _cam;
+
+    [Header("UI")]
+    [SerializeField] private TextMeshProUGUI _scoreText;
+
+    [Header("Multiplayer")]
+    public int totalPlayers = 4;
+    public int currentPlayerIndex = 0;
+
+    private Dictionary<Vector2Int, Tile> _tiles = new Dictionary<Vector2Int, Tile>();
+
+    // PER-PLAYER SCORE
+    private int[] _playerScores;
+
+    private int _nextCourseID = 1;
+
+    // TURN SYSTEM
+    private Dictionary<ControllableUnit_MP, bool> _unitsMoved = new Dictionary<ControllableUnit_MP, bool>();
+    private bool _hasPlacedTile = false;
+
+    private void Awake()
+    {
+        Instance = this;
+    }
+
+    private void Start()
+    {
+        _playerScores = new int[totalPlayers];
+
+        GenerateGrid();
+        UpdateScoreUI();
+        StartTurn();
+    }
+
+    // =========================
+    // GRID
+    // =========================
+
+    private void GenerateGrid()
+    {
+        _tiles.Clear();
+
+        for (int x = 0; x < _width; x++)
+        {
+            for (int y = 0; y < _height; y++)
+            {
+                Tile tile = Instantiate(_tilePrefab, new Vector3(x, y, 0), Quaternion.identity);
+
+                tile.name = $"Tile {x} {y}";
+                tile.SetPosition(x, y);
+
+                bool isOffset = (x + y) % 2 == 0;
+                tile.Init(isOffset);
+
+                _tiles.Add(new Vector2Int(x, y), tile);
+            }
+        }
+
+        if (_cam != null)
+        {
+            _cam.position = new Vector3(
+                _width / 2f - 0.5f,
+                _height / 2f - 0.5f,
+                -10f
+            );
+        }
+    }
+
+    public Tile GetTileAt(Vector2Int pos)
+    {
+        if (_tiles.TryGetValue(pos, out Tile tile))
+            return tile;
+
+        return null;
+    }
+
+    // =========================
+    // TURN SYSTEM
+    // =========================
+
+    public void StartTurn()
+    {
+
+        _unitsMoved.Clear();
+        _hasPlacedTile = false;
+
+        var units = UnitManager_MP.Instance.GetUnitsForPlayer(currentPlayerIndex);
+
+        var allUnits = UnitManager_MP.Instance.GetAllUnits();
+
+        foreach (var unit in allUnits)
+        {
+            unit.UpdateVisual();
+        }
+        foreach (var unit in units)
+        {
+            _unitsMoved[unit] = false;
+        }
+
+        Debug.Log($"PLAYER {currentPlayerIndex + 1} TURN");
+    }
+
+    public bool CanMoveUnit(ControllableUnit_MP unit)
+    {
+        if (!_unitsMoved.ContainsKey(unit))
+        {
+            if (unit.ownerPlayerIndex == currentPlayerIndex)
+            {
+                Debug.Log("Auto-registering unit: " + unit.name);
+                _unitsMoved[unit] = false;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        return !_unitsMoved[unit];
+    }
+    public void MarkUnitMoved(ControllableUnit_MP unit)
+    {
+        if (_unitsMoved.ContainsKey(unit))
+        {
+            _unitsMoved[unit] = true;
+        }
+    }
+
+    public bool CanPlaceTile()
+    {
+        return !_hasPlacedTile;
+    }
+
+    public void MarkTilePlaced()
+    {
+        _hasPlacedTile = true;
+    }
+
+    public void EndTurn()
+    {
+        currentPlayerIndex = (currentPlayerIndex + 1) % totalPlayers;
+
+        // Clear selection
+        if (UnitController_MP.Instance != null)
+            UnitController_MP.Instance.SelectUnit(null);
+
+        StartTurn();
+    }
+
+    public void EndTurnButton()
+    {
+        EndTurn();
+    }
+
+    // =========================
+    // SCORE SYSTEM (PER PLAYER)
+    // =========================
+
+    public void AddScore(int amount, int playerIndex)
+    {
+        if (playerIndex < 0 || playerIndex >= _playerScores.Length)
+            return;
+
+        _playerScores[playerIndex] += amount;
+        UpdateScoreUI();
+    }
+
+    private void UpdateScoreUI()
+    {
+        if (_scoreText == null) return;
+
+        string text = "";
+
+        for (int i = 0; i < _playerScores.Length; i++)
+        {
+            text += $"P{i + 1}: {_playerScores[i]}   ";
+        }
+
+        _scoreText.text = text;
+    }
+
+    public int GetScore(int playerIndex)
+    {
+        return _playerScores[playerIndex];
+    }
+
+    // =========================
+    // COURSE SYSTEM (UNCHANGED)
+    // =========================
+
+    public int GetNextCourseID()
+    {
+        return _nextCourseID++;
+    }
+
+    public List<Tile> GetAllCourseStarts()
+    {
+        List<Tile> result = new List<Tile>();
+
+        foreach (Tile tile in _tiles.Values)
+        {
+            if (tile != null && tile.GetContentType() == TileContentType.CourseStart)
+            {
+                result.Add(tile);
+            }
+        }
+
+        return result;
+    }
+
+    public bool IsCourseFullyBuilt()
+    {
+        List<Tile> starts = GetAllCourseStarts();
+
+        if (starts.Count == 0)
+            return false;
+
+        foreach (Tile startTile in starts)
+        {
+            if (IsCourseCompleteFromStart(startTile))
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool IsCourseCompleteFromStart(Tile startTile)
+    {
+        HashSet<Tile> visited = new HashSet<Tile>();
+        Queue<Tile> queue = new Queue<Tile>();
+
+        queue.Enqueue(startTile);
+        visited.Add(startTile);
+
+        while (queue.Count > 0)
+        {
+            Tile current = queue.Dequeue();
+
+            if (current.GetContentType() == TileContentType.CourseEnd_Part2)
+                return true;
+
+            Vector2Int[] directions =
+            {
+                Vector2Int.up,
+                Vector2Int.down,
+                Vector2Int.left,
+                Vector2Int.right
+            };
+
+            foreach (var dir in directions)
+            {
+                Tile neighbor = GetTileAt(current.GridPosition + dir);
+
+                if (neighbor == null || visited.Contains(neighbor))
+                    continue;
+
+                TileContentType type = neighbor.GetContentType();
+
+                bool isValid =
+                    type == TileContentType.Course ||
+                    type == TileContentType.CourseEnd_Part1 ||
+                    type == TileContentType.CourseEnd_Part2;
+
+                if (!isValid)
+                    continue;
+
+                visited.Add(neighbor);
+                queue.Enqueue(neighbor);
+            }
+        }
+
+        return false;
+    }
+
+    // HOME TILE FINDER
+    public Tile GetHomeTile()
+    {
+        foreach (Tile tile in _tiles.Values)
+        {
+            if (tile != null && tile.GetContentType() == TileContentType.Home)
+                return tile;
+        }
+
+        return null;
+    }
+
+
+
+}
