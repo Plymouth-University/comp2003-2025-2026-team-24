@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 public class AudioManager : MonoBehaviour
 {
@@ -18,47 +18,61 @@ public class AudioManager : MonoBehaviour
     [Header("Music")]
     public AudioClip backgroundMusic;
 
+    [Header("Volume Settings")]
+    [Range(0f, 1f)] public float sfxVolume = 1f;
+    [Range(0f, 1f)] public float musicVolume = 1f;
+
     void Awake()
     {
-        if (Instance == null) Instance = this;
-        else Destroy(gameObject);
+        if (Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);   
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
     }
 
     void Start()
     {
+        ApplyVolume();
         PlayMusic();
     }
 
     public void PlaySFX(string sound)
     {
-        switch (sound)
+        AudioClip clip = sound switch
         {
-            case "walking":
-                sfxSource.PlayOneShot(walking);
-                break;
+            "walking" => walking,
+            "jump" => jump,
+            "rope" => rope,
+            "metal" => metal,
+            "wee" => wee,
+            _ => null
+        };
 
-            case "jump":
-                sfxSource.PlayOneShot(jump);
-                break;
-
-            case "rope":
-                sfxSource.PlayOneShot(rope);
-                break;
-
-            case "metal":
-                sfxSource.PlayOneShot(metal);
-                break;
-
-            case "wee":
-                sfxSource.PlayOneShot(wee);
-                break;
-        }
+        if (clip != null)
+            sfxSource.PlayOneShot(clip, sfxVolume);
     }
 
     void PlayMusic()
     {
+        if (backgroundMusic == null) return;
+
         musicSource.clip = backgroundMusic;
         musicSource.loop = true;
+        musicSource.volume = musicVolume;
         musicSource.Play();
     }
+
+    public void ApplyVolume()
+    {
+        sfxSource.volume = sfxVolume;
+        musicSource.volume = musicVolume;
+    }
 }
+
+
+
