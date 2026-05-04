@@ -1,22 +1,24 @@
-ayush paudel uploads all the work he has done to this folder without affecting the main source folder.
+**Author:** Ayush Paudel  
 
-Updates by ayush.
+## Overview
+This folder contains the final implementation of the **Scoring and Leaderboard System** for *“A Walk in the Park”*. It handles real-time score calculation and persistent player ranking.
 
-# Sprint Update – Ayush Paudel  
-## Scoring & Leaderboard
+## Features
+- Tile-based scoring with adjacency bonus logic  
+- Dynamic score updates and turn tracking  
+- Persistent leaderboard using PlayerPrefs (JSON)  
+- Scores sorted (Top 10) with UI display  
+- Integrated scene navigation  
 
-### Work Completed
-- Implemented tile-based scoring system with base values per tile type.
-- Added adjacency bonus logic (4-directional neighbour check).
-- Score updates dynamically after each placement.
-- Implemented turn tracking and end-of-run trigger.
-- Developed persistent leaderboard system using PlayerPrefs (JSON storage).
-- Scores are saved, sorted in descending order, and limited to Top 10.
-- Leaderboard UI displays ranked results and supports scene navigation.
+## Tech Stack
+- Unity   
+- C# 
 
+## Contribution
+Developed and implemented the scoring logic and leaderboard system as part of the group project.
+contributed to the SFX resource and implementation
 
-### Next Steps
-- Refine scoring rules to align with official board game mechanics.
-- Add player name entry to leaderboard.
-- Improve visual feedback and UI polish.
-- Prepare scoring structure for future multiplayer integration.
+## Future Work
+- Player name input  
+- UI improvements  
+- Multiplayer scoring support  
